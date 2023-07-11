@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 # from keras.models import Sequential
 import time
 from sklearn.utils import shuffle
+import onnxruntime
 
 app = Flask(__name__)
 
@@ -35,7 +36,6 @@ def predict_load(timestamp):
 
 def applyPCA(df):
     # Taking the full dataframe except the last column
-    print(df.head())
 
     print(df.shape)
     df = df.iloc[:, 1:]
@@ -45,6 +45,7 @@ def applyPCA(df):
 
     # Converting the full dataframe into a matrix
     df_mat = np.asmatrix(df)
+    
 
     # Get covariance matrix from dataframe matrix
     sigma = np.cov(df_mat.T)
@@ -167,17 +168,15 @@ def utilisation(df):
 
     df=pd.concat([timestamps,CPU,DISK,NETPACKET,RAM],axis=1)
 
-    print(df.head())
-
     print("completed preprocessing")
 
-    print("apply pca")
+    # print("apply pca")
 
-    combinedSystemLoad = applyPCA(df)
+    # combinedSystemLoad = applyPCA(df)
 
-    df['Combined System Load'] = pd.Series(combinedSystemLoad)
+    # df['Combined System Load'] = pd.Series(combinedSystemLoad)
 
-    print("completed pca")
+    # print("completed pca")
 
     return df
 
@@ -192,10 +191,11 @@ def predict_fault(data):
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
     
-    print("load model")
-    loaded_rf = joblib.load("./random_forest.joblib")
-
-    y = loaded_rf.predict(X)
+    onnx_model_path = 'random_forest.onnx'
+    sess = onnxruntime.InferenceSession(onnx_model_path)
+    input_name = sess.get_inputs()[0].name
+    output_name = sess.get_outputs()[0].name
+    y = sess.run([output_name], {input_name: X.astype(np.float32)})[0]
     
     print("completed prediction")
     if (y[0]):
@@ -214,8 +214,8 @@ def system_fault_prediction():
 
     try:
         data = pd.read_csv(file)
-        prediction, factors = predict_fault(data)
-        return jsonify({'prediction': prediction, 'factors': factors})
+        prediction = predict_fault(data)
+        return jsonify({'prediction': prediction})
     except pd.errors.EmptyDataError:
         return jsonify({'error': 'Empty CSV file'}), 400
     except pd.errors.ParserError:
