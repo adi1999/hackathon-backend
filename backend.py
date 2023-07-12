@@ -9,27 +9,76 @@ import joblib
 import h5py 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import matplotlib.pyplot as plt
-# from keras.layers import Dense, Activation, Dropout
-# from keras.layers import LSTM
-# from keras.models import Sequential
 import time
-from sklearn.utils import shuffle
 import onnxruntime
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Activation, Dropout
+from tensorflow.keras.models import load_model
+import time
+from sklearn.metrics import mean_squared_error
+from matplotlib import pyplot
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
+from sklearn.utils import shuffle
+from datetime import timedelta
+from flask_cors import CORS
+
 
 app = Flask(__name__)
+CORS(app)
+
+
+def forecastnext(ts):
+
+    print(ts)
+    df=pd.read_csv('reduced-master-dataset-without-4features.csv')
+    loaded_model = load_model('lstm_model.h5')
+    df['CPU 1 YBLPVDAKDLWAPP1'] = df['CPU 1 YBLPVDAKDLWAPP1'].apply(pd.to_datetime)
+    b1=pd.to_datetime(ts)
+    a1 = pd.to_datetime(ts) - timedelta(minutes=500)
+    z=df[(df['CPU 1 YBLPVDAKDLWAPP1']>a1) & (df['CPU 1 YBLPVDAKDLWAPP1']<b1)]
+    se=pd.DataFrame(z['Combined System Load'])
+    size=se.size+1
+    a2=[]
+    x2=[]
+    size1=size-51                                          
+    series=se[size1:size]                                     #extract last 50 values from column
+    scaler = MinMaxScaler(feature_range=(-1, 1))               
+    scaled = scaler.fit_transform(series.values)
+    series = pd.DataFrame(scaled)                             #scaling the values
+    test_X=series.iloc[:]
+    test_X=test_X.values
+    test_X=test_X.reshape(1,50,1)
+    n_future_preds=20                                    #number of predictions to be made
+    preds_moving = []                                    # Use this to store the prediction made on each test window
+    moving_test_window = [test_X[0,:].tolist()]          # Creating the first test window
+    moving_test_window = np.array(moving_test_window)    # Making it an numpy array
+    ts=pd.to_datetime(ts)
+    tsac=ts.strftime('%Y-%m-%d %H:%M:%S')
+    
+    print("Starting LSTM prediction")
+    for i in range(n_future_preds):
+        preds_one_step = loaded_model.predict(moving_test_window) # Note that this is already a scaled prediction so no need to rescale this
+        preds_one_step.reshape(1,1)
+        preds_one_step = scaler.inverse_transform(preds_one_step)                       #transforming into actual format
+
+        preds_moving.append(preds_one_step[0,0]) # get the value from the numpy 2D array and append to predictions
+        preds_one_step = preds_one_step.reshape(1,1,1) # Reshaping the prediction to 3D array for concatenation with moving test window
+        moving_test_window = np.concatenate((moving_test_window[:,1:,:], preds_one_step), axis=1) # This is the new moving test window, where the first element from the window has been removed and the prediction  has been appended to the end
+        ts=pd.to_datetime(ts)+timedelta(minutes=10)
+        ts1=pd.to_datetime(ts)+timedelta(minutes=10)
+        a2.append(ts.strftime('%Y-%m-%d %H:%M:%S'))
+        x3=dict(zip(a2,preds_moving))
+        x4=dict(zip('input',tsac))
+        lst=[]
+        lst.append({'input':tsac,'output':x3})
+    return lst
 
 
 def predict_load(timestamp):
-    # Replace this with your ML program logic to predict load
-    # Here, we are just returning a dummy list of load values for the next 12 hours
-    load_predictions = []
-    current_time = datetime.fromtimestamp(timestamp)
-    for i in range(12):
-        future_time = current_time + timedelta(hours=i+1)
-        load_predictions.append({
-            'timestamp': future_time.timestamp(),
-            'load': i+1  # Dummy load value, replace with actual prediction
-        })
+    
+    load_predictions = forecastnext(timestamp)
+    print("Done LSTM prediction")
     return load_predictions
 
     
@@ -223,14 +272,15 @@ def system_fault_prediction():
 
 @app.route('/load-prediction', methods=['POST'])
 def load_prediction():
-    timestamp = request.json.get('timestamp')
+    data = request.get_json()
+    timestamp = data.get('timestamp')
     if timestamp is None:
         return jsonify({'error': 'Timestamp not provided'}), 400
 
     try:
-        timestamp = float(timestamp)
+        # timestamp = String(timestamp)
         load_predictions = predict_load(timestamp)
-        return jsonify(load_predictions)
+        return jsonify(str(load_predictions))
     except ValueError:
         return jsonify({'error': 'Invalid timestamp format'}), 400
 
