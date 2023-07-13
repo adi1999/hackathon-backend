@@ -1,18 +1,24 @@
 from flask import Flask, request, jsonify
-from datetime import timedelta
+from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, mean_squared_error
+import joblib
+import h5py 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import time
 import onnxruntime
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Activation, Dropout
 from tensorflow.keras.models import load_model
 import time
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.preprocessing import StandardScaler
 from sklearn.utils import shuffle
 from datetime import timedelta
 from flask_cors import CORS
-from flask.json import JSONEncoder
+import random
+from json import JSONEncoder
 
 
 class CustomJSONEncoder(JSONEncoder):
@@ -311,7 +317,6 @@ def utilisation(df):
 
     return df
 
-
 def predict_fault(data):
     # Replace this with your ML program logic to predict system faults
     # Here, we are just returning a dummy prediction and factors causing the fault
@@ -335,7 +340,6 @@ def predict_fault(data):
         prediction = 'stable'
    
     return prediction
-
 
 @app.route('/system-fault-prediction', methods=['POST'])
 def system_fault_prediction():
@@ -367,7 +371,6 @@ def load_prediction():
     except ValueError:
         return jsonify({'error': 'Invalid timestamp format'}), 400
 
-
 @app.route('/anomaly-detection', methods=['POST'])
 def anomaly_detection():
     file = request.files.get('csv_file')
@@ -382,8 +385,6 @@ def anomaly_detection():
         return jsonify({'error': 'Empty CSV file'}), 400
     except pd.errors.ParserError:
         return jsonify({'error': 'Invalid CSV format'}), 400
-
-
 
 if __name__ == '__main__':   
     app.run()
