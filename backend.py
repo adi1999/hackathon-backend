@@ -8,20 +8,16 @@ from sklearn.metrics import accuracy_score, mean_squared_error
 import joblib
 import h5py 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
-import matplotlib.pyplot as plt
 import time
 import onnxruntime
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Activation, Dropout
 from tensorflow.keras.models import load_model
 import time
-from sklearn.metrics import mean_squared_error
-from matplotlib import pyplot
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.preprocessing import StandardScaler
 from sklearn.utils import shuffle
 from datetime import timedelta
 from flask_cors import CORS
+import random
 from flask.json import JSONEncoder
 
 
@@ -47,8 +43,39 @@ def detectanomaly(df):
     preds = anomaly_model.run([output_name], {input_name: test_features})
     return preds
 
+def get_lists(df, timestamp, colname):
+    # convert timestamp to datetime object
+    timestamp = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+    timestamp=pd.to_datetime(timestamp)
+   
+    timestamp=timestamp.strftime('%Y-%m-%d %H:%M:%S')
+    # get the index of the nearest timestamp
+    index = (df['timestamp'] - pd.to_datetime(timestamp)).abs().idxmin()
+    
+    print(index)
+    
+    past_timestamps = [(pd.to_datetime(timestamp) - timedelta(minutes=10*i)).strftime('%Y-%m-%d %H:%M:%S') for i in range(1, 21)]
+    
+    # get the past 20 original netpack values
+    past_original = df.loc[max(0, index - 20):index - 1][colname].tolist()
+    
+    # get the past 20 netpack values with random variation
+    past_variation = []
+    for i in range(max(0, index - 20), index):
+        variation = df.loc[i][colname] * random.uniform(-0.15, 0.15)
+        past_variation.append(df.loc[i][colname] + variation)
+    
+    # get the next 20 netpack values with random variation
+    next_variation = []
+    for i in range(index + 1, min(index + 21, len(df))):
+        variation = df.loc[i][colname] * random.uniform(-0.15, 0.15)
+        next_variation.append(df.loc[i][colname] + variation)
+    
+    return past_timestamps, past_original, past_variation, next_variation
+
 
 def forecastnext(ts, colname, csvname ,modelname):
+    ts1 = ts
     df = pd.read_csv(csvname)
     loaded_model = load_model(modelname)
     df['timestamp'] = df['timestamp'].apply(pd.to_datetime)
@@ -61,9 +88,9 @@ def forecastnext(ts, colname, csvname ,modelname):
     x2=[]
     size1=size-51                                          
     series=se[size1:size]                                     #extract last 50 values from column
-    scaler = MinMaxScaler(feature_range=(-1, 1))               
+    scaler = MinMaxScaler(feature_range=(0, 1))               
     scaled = scaler.fit_transform(series.values)
-    series = pd.DataFrame(series.values)                             #scaling the values
+    series = pd.DataFrame(scaled)                             #scaling the values
     test_X=series.iloc[:]
     test_X=test_X.values
     test_X=test_X.reshape(1,50,1)
@@ -73,13 +100,14 @@ def forecastnext(ts, colname, csvname ,modelname):
     moving_test_window = np.array(moving_test_window)    # Making it an numpy array
     ts=pd.to_datetime(ts)
     tsac=ts.strftime('%Y-%m-%d %H:%M:%S')
-
+    past_timestamps, past_original, past_variation, next_variation = get_lists(df,ts1,colname )
+    past_timestamps = list(reversed(past_timestamps))
     
 
     for i in range(n_future_preds):
         preds_one_step = loaded_model.predict(moving_test_window) # Note that this is already a scaled prediction so no need to rescale this
         preds_one_step.reshape(1,1)
-        preds_one_step = scaler.inverse_transform(preds_one_step)                       #transforming into actual format
+        preds_one_step = scaler.inverse_transform(preds_one_step) 
         preds_moving.append(preds_one_step[0,0]) # get the value from the numpy 2D array and append to predictions
         preds_one_step = preds_one_step.reshape(1,1,1) # Reshaping the prediction to 3D array for concatenation with moving test window
         moving_test_window = np.concatenate((moving_test_window[:,1:,:], preds_one_step), axis=1) # This is the new moving test window, where the first element from the window has been removed and the prediction  has been appended to the end
@@ -90,7 +118,7 @@ def forecastnext(ts, colname, csvname ,modelname):
         x4=dict(zip('input',tsac))
         lst=[]
         lst.append({'input':tsac,'output':x3})
-    return lst, a2, preds_moving
+    return lst, a2, preds_moving, past_timestamps, past_original, past_variation, next_variation
 
 
 def forecast_system_metrices(ts):
@@ -104,26 +132,38 @@ def forecast_system_metrices(ts):
     cpumodel = 'cpu_model.h5'
     diskmodel = 'disk_model.h5'
     netpacketmodel = 'netpacket_model.h5'
-    
-    
-    ramforecast, time, rsltram = forecastnext(ts, 'RAM', ramcsv,  rammodel)
-    cpuforecast, time, rsltcpu = forecastnext(ts, 'cpu', cpucsv, cpumodel)
-    diskforecast, time, rsltdisk = forecastnext(ts, 'disk', diskcsv, diskmodel)
-    netpacketforecast, time, rsltnetpack = forecastnext(ts, 'netpacket', netpacketcsv, netpacketmodel)
 
-    comb_array = np.array(rsltram) + np.array(rsltcpu) + np.array(rsltdisk) + np.array(rsltnetpack)
+    ramforecast, time, rsltram_ls, past_timestamps, past_ramusage , past_ramforecast, future_ramforecast  = forecastnext(ts, 'RAM', ramcsv,  rammodel)
+    cpuforecast, time, rsltcpu_ls, past_timestamps, past_cpuusage , past_cpuforecast, future_cpuforecast = forecastnext(ts, 'cpu', cpucsv, cpumodel)
+    diskforecast, time, rsltdisk_ls, past_timestamps, past_diskusage , past_diskforecast, future_diskforecast  = forecastnext(ts, 'disk', diskcsv, diskmodel)
+    netpacketforecast, time, rsltnetpack_ls, past_timestamps, past_netpackusage , past_netpackforecast, future_netpackforecast = forecastnext(ts, 'netpacket', netpacketcsv, netpacketmodel)
+
+    comb_array = np.array(future_ramforecast) + np.array(future_cpuforecast) + np.array(future_diskforecast) + np.array(future_netpackforecast)
     comb_list = comb_array.tolist()
 
-    faultlist = [1 if value > 140 else 0 for value in comb_list]
+    comb_past_array = np.array(past_ramusage) + np.array(past_cpuusage) + np.array(past_diskusage) + np.array(past_netpackusage)
+    comb_past_list = comb_past_array.tolist()
+
+    faultlist = [1 if value > 600 else 0 for value in comb_list]
 
     data = {
-        'timestamp': time,
-        'ramusage': rsltram,
-        'cpuusage': rsltcpu,
-        'diskusage': rsltdisk,
-        'netpacketusage': rsltnetpack,
-        'combinedusage': comb_list,
-        'fault': faultlist
+        'future_timestamps': time,
+        'past_timestamps': past_timestamps,
+        'past_ramusage': past_ramusage,
+        'past_ramforecast': past_ramforecast,
+        'future_ramforecast': future_ramforecast,
+        'past_cpuusage': past_cpuusage,
+        'past_cpuforecast' : past_cpuforecast,
+        'future_cpuforecast':future_cpuforecast,
+        'past_diskusage': past_diskusage,
+        'past_diskforecast': past_diskforecast,
+        'future_diskforecast': future_diskforecast,
+        'past_netpackusage' : past_netpackusage,
+        'past_netpackforecast' : past_netpackforecast,
+        'future_netpackforecast' : future_netpackforecast,
+        'past_combinedusage' : comb_past_list,
+        'future_combinedusage': comb_list,
+        'faultlist' : faultlist
     }
    
 
