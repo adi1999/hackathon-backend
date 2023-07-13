@@ -5,7 +5,6 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, mean_squared_error
-import joblib
 import h5py 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import time
@@ -366,7 +365,6 @@ def load_prediction():
     try:
         # timestamp = String(timestamp)
         load_predictions = forecast_system_metrices(timestamp)
-        print(load_predictions)
         return jsonify(load_predictions)
     except ValueError:
         return jsonify({'error': 'Invalid timestamp format'}), 400
