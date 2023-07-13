@@ -1,23 +1,17 @@
 from flask import Flask, request, jsonify
-from datetime import datetime, timedelta
+from datetime import timedelta
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, mean_squared_error
-import joblib
-import h5py 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import time
 import onnxruntime
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Activation, Dropout
 from tensorflow.keras.models import load_model
 import time
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.utils import shuffle
 from datetime import timedelta
 from flask_cors import CORS
-import random
 from flask.json import JSONEncoder
 
 
@@ -32,6 +26,7 @@ CORS(app)
 
 
 app.json_encoder = CustomJSONEncoder
+
 
 
 
@@ -122,10 +117,10 @@ def forecastnext(ts, colname, csvname ,modelname):
 
 
 def forecast_system_metrices(ts):
-    ramcsv = "data_ram.csv"
-    cpucsv = "data_cpu.csv"
-    diskcsv = "data_disk.csv"
-    netpacketcsv = "data_netpacket.csv"
+    ramcsv = "data/data_ram.csv"
+    cpucsv = "data/data_cpu.csv"
+    diskcsv = "data/data_disk.csv"
+    netpacketcsv = "data/data_netpacket.csv"
     
     
     rammodel = 'ram_model.h5'
@@ -390,11 +385,5 @@ def anomaly_detection():
 
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':   
     app.run()
-
-
-
-
-
-
