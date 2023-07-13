@@ -22,22 +22,40 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.utils import shuffle
 from datetime import timedelta
 from flask_cors import CORS
+from flask.json import JSONEncoder
 
+
+class CustomJSONEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.float32):
+            return float(obj)
+        return super().default(obj)
 
 app = Flask(__name__)
 CORS(app)
 
 
-def forecastnext(ts):
+app.json_encoder = CustomJSONEncoder
 
-    print(ts)
-    df=pd.read_csv('reduced-master-dataset-without-4features.csv')
-    loaded_model = load_model('lstm_model.h5')
-    df['CPU 1 YBLPVDAKDLWAPP1'] = df['CPU 1 YBLPVDAKDLWAPP1'].apply(pd.to_datetime)
+
+
+def detectanomaly(df):
+    anomaly_model = onnxruntime.InferenceSession('anomaly_model.onnx')
+    test_features = test_features.drop('status', axis=1).values.astype('float32')
+    input_name = anomaly_model.get_inputs()[0].name
+    output_name = anomaly_model.get_outputs()[0].name
+    preds = anomaly_model.run([output_name], {input_name: test_features})
+    return preds
+
+
+def forecastnext(ts, colname, csvname ,modelname):
+    df = pd.read_csv(csvname)
+    loaded_model = load_model(modelname)
+    df['timestamp'] = df['timestamp'].apply(pd.to_datetime)
     b1=pd.to_datetime(ts)
     a1 = pd.to_datetime(ts) - timedelta(minutes=500)
-    z=df[(df['CPU 1 YBLPVDAKDLWAPP1']>a1) & (df['CPU 1 YBLPVDAKDLWAPP1']<b1)]
-    se=pd.DataFrame(z['Combined System Load'])
+    z=df[(df['timestamp']>a1) & (df['timestamp']<b1)]
+    se=pd.DataFrame(z[colname])
     size=se.size+1
     a2=[]
     x2=[]
@@ -45,7 +63,7 @@ def forecastnext(ts):
     series=se[size1:size]                                     #extract last 50 values from column
     scaler = MinMaxScaler(feature_range=(-1, 1))               
     scaled = scaler.fit_transform(series.values)
-    series = pd.DataFrame(scaled)                             #scaling the values
+    series = pd.DataFrame(series.values)                             #scaling the values
     test_X=series.iloc[:]
     test_X=test_X.values
     test_X=test_X.reshape(1,50,1)
@@ -55,13 +73,13 @@ def forecastnext(ts):
     moving_test_window = np.array(moving_test_window)    # Making it an numpy array
     ts=pd.to_datetime(ts)
     tsac=ts.strftime('%Y-%m-%d %H:%M:%S')
+
     
-    print("Starting LSTM prediction")
+
     for i in range(n_future_preds):
         preds_one_step = loaded_model.predict(moving_test_window) # Note that this is already a scaled prediction so no need to rescale this
         preds_one_step.reshape(1,1)
         preds_one_step = scaler.inverse_transform(preds_one_step)                       #transforming into actual format
-
         preds_moving.append(preds_one_step[0,0]) # get the value from the numpy 2D array and append to predictions
         preds_one_step = preds_one_step.reshape(1,1,1) # Reshaping the prediction to 3D array for concatenation with moving test window
         moving_test_window = np.concatenate((moving_test_window[:,1:,:], preds_one_step), axis=1) # This is the new moving test window, where the first element from the window has been removed and the prediction  has been appended to the end
@@ -72,14 +90,44 @@ def forecastnext(ts):
         x4=dict(zip('input',tsac))
         lst=[]
         lst.append({'input':tsac,'output':x3})
-    return lst
+    return lst, a2, preds_moving
 
 
-def predict_load(timestamp):
+def forecast_system_metrices(ts):
+    ramcsv = "data_ram.csv"
+    cpucsv = "data_cpu.csv"
+    diskcsv = "data_disk.csv"
+    netpacketcsv = "data_netpacket.csv"
     
-    load_predictions = forecastnext(timestamp)
-    print("Done LSTM prediction")
-    return load_predictions
+    
+    rammodel = 'ram_model.h5'
+    cpumodel = 'cpu_model.h5'
+    diskmodel = 'disk_model.h5'
+    netpacketmodel = 'netpacket_model.h5'
+    
+    
+    ramforecast, time, rsltram = forecastnext(ts, 'RAM', ramcsv,  rammodel)
+    cpuforecast, time, rsltcpu = forecastnext(ts, 'cpu', cpucsv, cpumodel)
+    diskforecast, time, rsltdisk = forecastnext(ts, 'disk', diskcsv, diskmodel)
+    netpacketforecast, time, rsltnetpack = forecastnext(ts, 'netpacket', netpacketcsv, netpacketmodel)
+
+    comb_array = np.array(rsltram) + np.array(rsltcpu) + np.array(rsltdisk) + np.array(rsltnetpack)
+    comb_list = comb_array.tolist()
+
+    faultlist = [1 if value > 140 else 0 for value in comb_list]
+
+    data = {
+        'timestamp': time,
+        'ramusage': rsltram,
+        'cpuusage': rsltcpu,
+        'diskusage': rsltdisk,
+        'netpacketusage': rsltnetpack,
+        'combinedusage': comb_list,
+        'fault': faultlist
+    }
+   
+
+    return data
 
     
 
@@ -115,7 +163,6 @@ def utilisation(df):
 
     print("started preprocessing")
 
-    
 
     timestamps=df['CPU 1 YBLPVDAKDLWAPP1']
     swap_space_unused=df['swaptotal_mem'] -df['swapfree_mem']+df['inactive_mem']
@@ -240,7 +287,7 @@ def predict_fault(data):
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
     
-    onnx_model_path = 'random_forest.onnx'
+    onnx_model_path = './random_forest.onnx'
     sess = onnxruntime.InferenceSession(onnx_model_path)
     input_name = sess.get_inputs()[0].name
     output_name = sess.get_outputs()[0].name
@@ -279,10 +326,27 @@ def load_prediction():
 
     try:
         # timestamp = String(timestamp)
-        load_predictions = predict_load(timestamp)
-        return jsonify(str(load_predictions))
+        load_predictions = forecast_system_metrices(timestamp)
+        print(load_predictions)
+        return jsonify(load_predictions)
     except ValueError:
         return jsonify({'error': 'Invalid timestamp format'}), 400
+
+
+@app.route('/anomaly-detection', methods=['POST'])
+def anomaly_detection():
+    file = request.files.get('csv_file')
+    if file is None:
+        return jsonify({'error': 'CSV file not provided'}), 400
+
+    try:
+        data = pd.read_csv(file)
+        prediction = detectanomaly(data)
+        return jsonify({'prediction': prediction})
+    except pd.errors.EmptyDataError:
+        return jsonify({'error': 'Empty CSV file'}), 400
+    except pd.errors.ParserError:
+        return jsonify({'error': 'Invalid CSV format'}), 400
 
 
 
