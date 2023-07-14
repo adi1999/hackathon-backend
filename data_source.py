@@ -24,7 +24,7 @@ def test_fun(data):
     print('Reached Here!!!')
 
 def connectToServer():
-    sio.connect('http://localhost:5000', wait_timeout = 20)
+    sio.connect('https://61a4-160-83-96-177.ngrok.io', wait_timeout = 20)
     start_data_streaming()
 
 def start_data_streaming():
