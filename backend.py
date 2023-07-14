@@ -5,7 +5,6 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, mean_squared_error
-import h5py 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import time
 import onnxruntime
@@ -36,11 +35,37 @@ app.json_encoder = CustomJSONEncoder
 
 def detectanomaly(df):
     anomaly_model = onnxruntime.InferenceSession('anomaly_model.onnx')
-    test_features = test_features.drop('status', axis=1).values.astype('float32')
+    test_features = df.drop('status', axis=1).values.astype('float32')
     input_name = anomaly_model.get_inputs()[0].name
     output_name = anomaly_model.get_outputs()[0].name
     preds = anomaly_model.run([output_name], {input_name: test_features})
     return preds
+
+
+def detectanomaly_orig(timestamp):
+    df = pd.read_csv('anomaly-data.csv')
+    df_sorted = df.sort_values('timestamp')
+    
+    # Get the index of the input timestamp
+    print(pd.to_datetime(timestamp))
+    index = df_sorted[pd.to_datetime(df_sorted['timestamp']) == pd.to_datetime(timestamp)].index[0]
+    
+    # Calculate the starting and ending indices for the past 20 timestamps
+    start_index = max(0, index - 19)
+    end_index = index + 1
+    
+    # Get the past 20 timestamps and corresponding status values
+    past_timestamps = df_sorted.loc[start_index:end_index, 'timestamp'].tolist()
+    past_status = df_sorted.loc[start_index:end_index, 'status'].tolist()
+
+    data = {
+        'timestamps' : past_timestamps,
+        'status' : past_status
+    }
+    
+    return data
+
+
 
 def get_lists(df, timestamp, colname):
     # convert timestamp to datetime object
@@ -143,7 +168,14 @@ def forecast_system_metrices(ts):
     comb_past_array = np.array(past_ramusage) + np.array(past_cpuusage) + np.array(past_diskusage) + np.array(past_netpackusage)
     comb_past_list = comb_past_array.tolist()
 
-    faultlist = [1 if value > 600 else 0 for value in comb_list]
+    comb_past_forecast_array = np.array(past_ramforecast) + np.array(past_cpuforecast) + np.array(past_diskforecast) + np.array(past_netpackforecast)
+    comb_past_forecast_list = comb_past_forecast_array.tolist()
+
+    future_faultlist = [1 if value > 800 else 0 for value in comb_list]
+    past_faultlist = [1 if value > 800 else 0 for value in comb_past_forecast_list]
+    faultlist = past_faultlist + future_faultlist
+
+    actual_faultlist = [1 if value > 800 else 0 for value in comb_past_list]
 
     data = {
         'future_timestamps': time,
@@ -162,7 +194,9 @@ def forecast_system_metrices(ts):
         'future_netpackforecast' : future_netpackforecast,
         'past_combinedusage' : comb_past_list,
         'future_combinedusage': comb_list,
-        'faultlist' : faultlist
+        'past_combinedforecast': comb_past_forecast_list,
+        'forecast_faultlist' : faultlist,
+        'actual_faultlist': actual_faultlist 
     }
    
 
@@ -373,14 +407,13 @@ def load_prediction():
 
 @app.route('/anomaly-detection', methods=['POST'])
 def anomaly_detection():
-    file = request.files.get('csv_file')
-    if file is None:
-        return jsonify({'error': 'CSV file not provided'}), 400
-
+    jsonData = request.get_json()
+    if jsonData is None:
+        return jsonify({'error': 'Json data not provided'}), 400
     try:
-        data = pd.read_csv(file)
-        prediction = detectanomaly(data)
-        return jsonify({'prediction': prediction})
+        tim = jsonData["timestamp"]
+        prediction  = detectanomaly_orig(tim)
+        return jsonify(prediction)
     except pd.errors.EmptyDataError:
         return jsonify({'error': 'Empty CSV file'}), 400
     except pd.errors.ParserError:
