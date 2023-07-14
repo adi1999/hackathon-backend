@@ -45,20 +45,18 @@ def detectanomaly(df):
 
 def detectanomaly_orig(timestamp):
     df = pd.read_csv('anomaly-data.csv')
+    df1 = df
     df_sorted = df.sort_values('timestamp')
-    
     # Get the index of the input timestamp
-    print(pd.to_datetime(timestamp))
     index = df_sorted[pd.to_datetime(df_sorted['timestamp']) == pd.to_datetime(timestamp)].index[0]
-    
     # Calculate the starting and ending indices for the past 20 timestamps
     start_index = max(0, index - 19)
     end_index = index + 1
-    
     # Get the past 20 timestamps and corresponding status values
-    past_timestamps = df_sorted.loc[start_index:end_index, 'timestamp'].tolist()
-    past_status = df_sorted.loc[start_index:end_index, 'status'].tolist()
-
+    past_timestamps = df1.loc[start_index:end_index]['timestamp'].tolist()
+    past_status = df1.loc[start_index:end_index]['status'].tolist()
+    
+    print(len(past_status))
     data = {
         'timestamps' : past_timestamps,
         'status' : past_status
