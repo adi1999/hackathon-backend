@@ -5,7 +5,8 @@ from datetime import datetime
 sio = socketio.Client()
 
 def connectToServer():
-    sio.connect('http://localhost:5000', wait_timeout = 20)
+    # sio.connect('https://3aa0-160-83-96-177.ngrok.io', wait_timeout = 20)
+    sio.connect('https://hackathon-backend-flask-1-d2iqcgwvfa-uc.a.run.app', wait_timeout = 20)
 
 @sio.event
 def connect():
@@ -33,14 +34,18 @@ def data_processing(data):
 
 
 def get_hardware_stats(timeframe):
+    
     timeframe = timeframe + ':01'
     timeframe = timeframe[6:10]+'-'+timeframe[3:5]+'-'+timeframe[0:2]+' '+timeframe[11:19]
-    res = requests.post('https://d4b9-160-83-96-177.ngrok-free.app/load-prediction', json = {'timestamp':timeframe})
+    # res = requests.post('https://7748-160-83-96-177.ngrok-free.app/load-prediction', json = {'timestamp':timeframe})
+    res = requests.post('https://hackathon-ml-server-d2iqcgwvfa-uc.a.run.app/load-prediction', json = {'timestamp':timeframe})
     return res.json()
 
 
 def get_network_anomaly_data(data):
-    return True
+    # res = requests.post('https://7748-160-83-96-177.ngrok-free.app/anomaly-detection', json = data)
+    res = requests.post('https://hackathon-ml-server-d2iqcgwvfa-uc.a.run.app/anomaly-detection', json = data)
+    return res.json()
 
 if __name__ == '__main__':
     connectToServer()

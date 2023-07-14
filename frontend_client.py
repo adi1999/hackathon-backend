@@ -1,4 +1,5 @@
 import socketio
+import requests
 
 sio = socketio.Client()
 
@@ -28,4 +29,9 @@ def data_processing(data):
     print(data)
 
 if __name__ == '__main__':
-    connectToServer()
+    timeframe = timeframe + ':01'
+    timeframe = timeframe[6:10]+'-'+timeframe[3:5]+'-'+timeframe[0:2]+' '+timeframe[11:19]
+    res = requests.post('https://7748-160-83-96-177.ngrok-free.app/load-prediction', json = {'timestamp':timeframe})
+    print(res)
+    print(res.json())     
+    # connectToServer()
