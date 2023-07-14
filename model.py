@@ -1,7 +1,9 @@
 import socketio
 import requests
 from datetime import datetime
+from flask import Flask
 
+app = Flask(__name__)
 sio = socketio.Client()
 
 def connectToServer():
@@ -49,3 +51,4 @@ def get_network_anomaly_data(data):
 
 if __name__ == '__main__':
     connectToServer()
+    app.run()

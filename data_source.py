@@ -1,6 +1,9 @@
 import socketio
 import csv
 import time
+from flask import Flask
+
+app = Flask(__name__)
 
 sio = socketio.Client()
 
@@ -53,3 +56,4 @@ def start_data_streaming():
 
 if __name__ == '__main__':
     connectToServer()
+    app.run()
