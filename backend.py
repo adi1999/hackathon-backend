@@ -16,7 +16,7 @@ from sklearn.utils import shuffle
 from datetime import timedelta
 from flask_cors import CORS
 import random
-from flask.json import JSONEncoder
+from json import JSONEncoder
 
 
 class CustomJSONEncoder(JSONEncoder):
@@ -30,6 +30,7 @@ CORS(app)
 
 
 app.json_encoder = CustomJSONEncoder
+
 
 
 
@@ -146,10 +147,10 @@ def forecastnext(ts, colname, csvname ,modelname):
 
 
 def forecast_system_metrices(ts):
-    ramcsv = "data_ram.csv"
-    cpucsv = "data_cpu.csv"
-    diskcsv = "data_disk.csv"
-    netpacketcsv = "data_netpacket.csv"
+    ramcsv = "data/data_ram.csv"
+    cpucsv = "data/data_cpu.csv"
+    diskcsv = "data/data_disk.csv"
+    netpacketcsv = "data/data_netpacket.csv"
     
     
     rammodel = 'ram_model.h5'
@@ -349,7 +350,6 @@ def utilisation(df):
 
     return df
 
-
 def predict_fault(data):
     # Replace this with your ML program logic to predict system faults
     # Here, we are just returning a dummy prediction and factors causing the fault
@@ -373,7 +373,6 @@ def predict_fault(data):
         prediction = 'stable'
    
     return prediction
-
 
 @app.route('/system-fault-prediction', methods=['POST'])
 def system_fault_prediction():
@@ -404,7 +403,6 @@ def load_prediction():
     except ValueError:
         return jsonify({'error': 'Invalid timestamp format'}), 400
 
-
 @app.route('/anomaly-detection', methods=['POST'])
 def anomaly_detection():
     jsonData = request.get_json()
@@ -419,13 +417,5 @@ def anomaly_detection():
     except pd.errors.ParserError:
         return jsonify({'error': 'Invalid CSV format'}), 400
 
-
-
-if __name__ == '__main__':
+if __name__ == '__main__':   
     app.run()
-
-
-
-
-
-
