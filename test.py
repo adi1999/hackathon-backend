@@ -14,7 +14,6 @@ class Client:
     def __init__(self, entity: str, reports: List[ReportLimit]):
         self.entity = entity
         self.reports = reports
-
 def create_map(client: Client) -> Dict[str, List[str]]:
     result_map = {}
     
@@ -26,7 +25,25 @@ def create_map(client: Client) -> Dict[str, List[str]]:
     
     return result_map
 
-# Example usage:
+
+
+def calculate_square(number):
+    return number ** 2
+
+def calculate_probability(event_outcomes, total_outcomes):
+    if total_outcomes == 0:
+        return 0
+    else:
+        return event_outcomes / total_outcomes
+
+def calculate_factorial(n):
+    if n == 0 or n == 1:
+        return 1
+    else:
+        return n * calculate_factorial(n - 1)
+
+        
+
 lrd1 = Lrd("L1", "2022-01-01")
 lrd2 = Lrd("L2", "2022-02-01")
 report_limit1 = ReportLimit("Report1", [lrd1, lrd2])
